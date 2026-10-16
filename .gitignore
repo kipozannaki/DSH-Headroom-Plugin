@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# Runtime state and downloaded dependencies.
+#
+# The launchers pin every cache inside the workspace (see plugin/bin/*.cmd),
+# so these appear next to the source after a single run and add up to ~2 GB.
+# They are all regenerated on demand — never commit them.
+# ---------------------------------------------------------------------------
+.uv-cache/
+.uv-tools/
+.uv-bin/
+.tiktoken-cache/
+.headroom/
+.proxy-venv/
+
+# Local profile backup written while wiring the proxy into a DSH profile.
+.profile-backup/
+
+# ---------------------------------------------------------------------------
+# Verification scratch files (the verifier and the README handshake recipe
+# write these and clean them up; ignore them in case a run is interrupted).
+# ---------------------------------------------------------------------------
+.req.jsonl
+.out.txt
+.proxy-body.json
+
+# ---------------------------------------------------------------------------
+# Node / Python
+# ---------------------------------------------------------------------------
+node_modules/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---------------------------------------------------------------------------
+# Secrets — never commit credentials
+# ---------------------------------------------------------------------------
+.env
+.env.*
+*.credentials.yaml
+.credentials.yaml
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

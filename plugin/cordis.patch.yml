@@ -1,0 +1,41 @@
+# DSH bundle patch: register Headroom's MCP server.
+#
+# Installed as a local bundle, this appends one row that spawns
+# plugin/bin/headroom-mcp.cmd (Windows) over stdio and exposes Headroom's
+# on-demand compression tools to the Harness agent as
+#   mcp__headroom__headroom_compress
+#   mcp__headroom__headroom_retrieve
+#   mcp__headroom__headroom_stats
+#
+# WHY `cwd` IS SET AND `command` IS RELATIVE
+# ------------------------------------------
+# The stdio transport spawns `command` verbatim (shell: false) and never
+# rewrites it, so an absolute path here would be wrong for everyone except the
+# machine it was written on. A relative `command` resolves against `cwd`
+# instead, which this patch supplies as an expression:
+#
+#   cwd = DSH_HEADROOM_ROOT  if you set it, else the Host's working directory
+#
+# So the common case needs no editing at all: start the Harness from the cloned
+# repository root and `process.cwd()` is already correct. If you start it
+# elsewhere, set DSH_HEADROOM_ROOT to the repository root and it still works.
+#
+# `!!js` is the Cordis entry-list dialect; the Loader evaluates it at activation.
+# Only `process.env` and `process.cwd()` are relied on here -- `__dirname` and
+# `require` are NOT available in that evaluation scope.
+#
+# The launcher pins every uv / Headroom cache and state directory inside the
+# workspace (see plugin/bin/headroom-mcp.cmd), so a workspace-write sandbox can
+# run it. HEADROOM_DSH_WORKSPACE overrides the workspace root the launcher uses
+# for its own caches; it is independent of the path resolution above.
+
+- insert:
+    - id: headroom-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: headroom
+        transport: stdio
+        cwd: !!js process.env.DSH_HEADROOM_ROOT || process.cwd()
+        command: plugin\bin\headroom-mcp.cmd
+        args: []
+        failOnStartupError: true

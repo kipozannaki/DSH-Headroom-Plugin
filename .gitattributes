@@ -1,0 +1,27 @@
+# Line endings: normalize on commit, keep working-tree line endings native.
+#
+# The .sh launcher is the important case: a POSIX shell script with CRLF line
+# endings fails with `bad interpreter` / `$'\r': command not found`, so shell
+# scripts must stay LF in the repository and in the working tree on every
+# platform.
+* text=auto eol=lf
+
+*.sh        text eol=lf
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+*.py        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+
+# Binary assets must never be text-normalized.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.whl       binary
