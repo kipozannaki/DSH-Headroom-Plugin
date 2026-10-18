@@ -11,7 +11,7 @@ and retrieve the original on demand, without leaving the conversation.
 
 - Package: `@local/dsh-headroom` v1.0.0
 - Bundle patch: [`cordis.patch.yml`](cordis.patch.yml)
-- MCP launcher: [`bin/headroom-mcp.cmd`](bin/headroom-mcp.cmd) (Windows) / [`bin/headroom-mcp.sh`](bin/headroom-mcp.sh) (POSIX)
+- Optional MCP convenience wrapper (manual testing only): [`bin/headroom-mcp.cmd`](bin/headroom-mcp.cmd) (Windows) / [`bin/headroom-mcp.sh`](bin/headroom-mcp.sh) (POSIX)
 - Proxy launcher: [`bin/headroom-proxy.cmd`](bin/headroom-proxy.cmd) + [`bin/setup-proxy-venv.cmd`](bin/setup-proxy-venv.cmd)
 
 The bundle is **inert config** — no Host or Client JavaScript runs. Everything it
@@ -87,43 +87,37 @@ running for as long as you want compression.
 Uncovered providers are unaffected by a stopped proxy, so this does not put your
 normal sessions at risk.
 
-## Why the launcher exists
+## The launchers are optional
 
-The MCP launcher installs Headroom on demand via `uvx`. Under a sandboxed Harness
-(workspace-write) the default uv and Headroom state directories live outside the
-workspace and are not writable, so the launcher pins all of them inside the
-workspace before exec'ing `uvx`:
-
-| Variable | Value | Why |
-| --- | --- | --- |
-| `UV_CACHE_DIR` | `<workspace>/.uv-cache` | uv's package cache |
-| `UV_TOOL_DIR` | `<workspace>/.uv-tools` | uv tool environments |
-| `UV_TOOL_BIN_DIR` | `<workspace>/.uv-bin` | uv tool shims |
-| `TIKTOKEN_CACHE_DIR` | `<workspace>/.tiktoken-cache` | prevents a stalled tiktoken vocab download |
-| `HEADROOM_WORKSPACE_DIR` | `<workspace>/.headroom` | Headroom cannot write `~/.headroom` under a sandbox |
-| `HEADROOM_BEACON` | `off` | disables the anonymous usage beacon (local-first, no telemetry) |
-| `HEADROOM_UPDATE_CHECK` | `off` | disables the daily PyPI version probe — gated separately from the beacon |
-| `HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS` | `120` | bounds vocab-load stalls |
-
-The workspace root is resolved once, at the top of each launcher:
-
-1. `HEADROOM_DSH_WORKSPACE` env var, if set; otherwise
-2. two levels up from the script's own directory (`plugin/bin` → workspace root).
-
-So the bundle can be relocated, and it works from any working directory once the
-patch's `cwd` expression resolves (see [Relocating the bundle](#relocating-the-bundle)).
-
-The final command is:
+The bundle starts the MCP server directly with `uvx` on `PATH` — no wrapper script
+involved:
 
 ```
 uvx --from "headroom-ai[mcp]" headroom mcp serve
 ```
 
-### Overrides
+The MCP stdio server is spawned straight by the transport (cross-spawn), not through
+the sandboxed subprocess service, so it inherits the Host's permissions and
+uv/Headroom write to their standard per-user locations — nothing is pinned into the
+workspace. The patch sets three environment flags on the `uvx` call:
 
-Every value above is a default you can replace by setting the variable before
-launching. These are read but not listed in the table, because you rarely need
-them:
+| Variable | Value | Why |
+| --- | --- | --- |
+| `HEADROOM_BEACON` | `off` | disables the anonymous usage beacon (local-first, no telemetry) |
+| `HEADROOM_UPDATE_CHECK` | `off` | disables the daily PyPI version probe — gated separately from the beacon |
+| `HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS` | `120` | bounds vocab-load stalls |
+
+`bin/headroom-mcp.cmd` (Windows) and `bin/headroom-mcp.sh` (POSIX) are **optional
+standalone convenience wrappers** for **manual testing only** — the bundle does not
+invoke them. Run by hand, they pin uv/Headroom cache and state directories inside a
+workspace and resolve that root from `HEADROOM_DSH_WORKSPACE` (or two levels above
+the script), so one manual run is self-contained.
+
+### Variables the launchers and proxy read
+
+These are read by the optional launchers and the proxy — not by the bundle's `uvx`
+call. Each is a default you can override by setting the variable before launching.
+You rarely need them:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
@@ -151,48 +145,26 @@ links `@local/dsh-headroom` into `~/.dsh/profiles/<profile>/node_modules`, and
 applies the patch to the live profile (a live profile needs no restart). A
 successful result reports `application: applied` with empty `warnings`.
 
-**Before installing, edit `command` in [`cordis.patch.yml`](cordis.patch.yml)** —
-see [Relocating the bundle](#relocating-the-bundle).
-
 Do not hand-edit the profile's `package.json` or `cordis.patch.yml`; the bundle
 owns its own patch file and the manager owns the profile.
 
-### Relocating the bundle
+### No path to configure
 
-An MCP `command` is spawned **verbatim** by the SDK with `shell: false`
-(`@modelcontextprotocol/client/dist/stdio.mjs`), and `dsh-mcp-client`'s config
-schema declares it as a plain `z.string().required()` with no path resolution —
-the module does not import `path` at all. The Loader's relative-path anchoring
-covers a row's `name` (its `anchorInsertedPluginNames` pass rewrites `entry.name`
-only), **not** a plugin's own config values. So a relative `command` is never
-resolved against the patch file.
-
-It *is* resolved against `cwd`, however — and `dsh-mcp-client` accepts a `cwd`
-key (`lib/index.js:786`, default `""`) which it forwards to the SDK's stdio
-transport (`:44`). That is what makes a config-only patch portable:
-
-```yaml
-cwd: !!js process.env.DSH_HEADROOM_ROOT || process.cwd()
-command: plugin\bin\headroom-mcp.cmd
-```
-
-Start the Harness from the repository root and the fallback is already correct;
-start it anywhere else and `DSH_HEADROOM_ROOT` supplies the root. The launchers
-hardcode nothing either — each resolves its own workspace root from
-`HEADROOM_DSH_WORKSPACE`, falling back to two directories above its own location.
+The MCP row's `command` has no directory component, so the stdio transport resolves
+it through the `PATH` (`cross-spawn`) — install location and the Host's working
+directory do not matter. There is no `cwd`, no `DSH_HEADROOM_ROOT`, and no relative
+launcher path to set up.
 
 `!!js` is the Cordis entry-list dialect, evaluated in the Host at activation via
 `with (ctx) { return eval(expr) }`. That scope exposes Node globals such as
-`process`, but **not** `__dirname`, `__filename`, `require`, or `module` — so a
-repository-relative path cannot be derived automatically; it must come from the
-environment or the working directory.
+`process`, but **not** `__dirname`, `__filename`, `require`, or `module`. Naming a
+bare `uvx` sidesteps the problem entirely: nothing has to be derived from the patch
+file's own location.
 
 Note also that DSH scrubs any environment name matching
 `/KEY|PASSWORD|SECRET|TOKEN/i` — and every `DSH_*` name — before handing it to an
-MCP child (`dsh-subprocess/lib/index.js:32,52`). This bundle's `HEADROOM_*` and
-`DSH_HEADROOM_ROOT` names: the former pass through untouched; the latter is read
-by the Loader *before* that scrub, since it is evaluated in the Host, not in the
-child. Prefer `HEADROOM_DSH_WORKSPACE` for anything the launcher itself reads.
+MCP child (`dsh-subprocess/lib/index.js:32,52`). The patch's `HEADROOM_*` flags pass
+through untouched.
 
 ## Verify
 
@@ -205,12 +177,15 @@ node -e "const{createRequire}=require('module');const r=createRequire(process.en
 ```
 
 Expect a top-level array with one `insert` row whose `config.serverName` is
-`headroom` and whose `config.command` points at the launcher.
+`headroom` and whose `config.command` is `uvx`.
 
 ### 2. The MCP server answers the handshake
 
 Write the three JSON-RPC lines to a file, then pipe it in. PowerShell pipelines are
 required — a piped Node `child_process.spawn` hits the sandbox's EPERM boundary.
+These examples drive the optional `headroom-mcp.cmd` wrapper; the bundle itself runs
+the equivalent `uvx --from "headroom-ai[mcp]" headroom mcp serve`, and you can
+substitute that command anywhere below.
 
 ```powershell
 $req = @(
@@ -328,13 +303,13 @@ probe, point `HEADROOM_PROXY_URL` at a running proxy via the launcher's `env`.
   outright rather than falling back to the direct upstream.
 - **First run is slow.** `uvx` installs `headroom-ai[mcp]` and its dependencies on
   first launch. Expect a delay and network access; subsequent runs are cached.
-- **`uvx` must be on `PATH`.** The launcher calls `uvx` by name.
-- **Windows launcher is `.cmd`.** It cannot be spawned directly without a shell;
-  `dsh-mcp-client` invoking it as `command` goes through `cmd.exe` on Windows. The
-  `.sh` launcher is the POSIX equivalent.
-- **The patch resolves the launcher via `cwd`.** It works as shipped when you start
-  the Harness from the repository root; otherwise set `DSH_HEADROOM_ROOT` to that
-  root so the `!!js` expression finds it.
+- **`uvx` must be on `PATH`.** The MCP row calls `uvx` by name.
+- **The MCP row is cross-platform.** `uvx` is the same name on Windows (`uvx.exe`),
+  macOS, and Linux, so the MCP row has no `.cmd`/`.sh` platform split. The optional
+  `.cmd`/`.sh` wrappers are for manual testing only.
+- **Install and go.** The MCP row starts via `uvx` on `PATH`, so it works wherever
+  the bundle is installed and whatever the Host's working directory is — after
+  install the `headroom-mcp` row should be `active` and the three tools callable.
 - **No telemetry, and the update check is off** (`HEADROOM_BEACON=off` plus
   `HEADROOM_UPDATE_CHECK=off`, two separately gated paths), but the compression
   library itself is third-party code running locally with your content.

@@ -8,7 +8,7 @@
 
 - 包名：`@local/dsh-headroom` v1.0.0
 - Bundle 补丁：[`cordis.patch.yml`](cordis.patch.yml)
-- MCP 启动器：[`bin/headroom-mcp.cmd`](bin/headroom-mcp.cmd)（Windows）/ [`bin/headroom-mcp.sh`](bin/headroom-mcp.sh)（POSIX）
+- 可选的 MCP 便捷包装（仅供手动测试）：[`bin/headroom-mcp.cmd`](bin/headroom-mcp.cmd)（Windows）/ [`bin/headroom-mcp.sh`](bin/headroom-mcp.sh)（POSIX）
 - 代理启动器：[`bin/headroom-proxy.cmd`](bin/headroom-proxy.cmd) + [`bin/setup-proxy-venv.cmd`](bin/setup-proxy-venv.cmd)
 
 本 bundle 是**惰性配置** —— 不运行任何 Host 或 Client JavaScript。它做的全部事情就是拉起 Headroom 自己的可执行文件。
@@ -64,42 +64,26 @@ baseURL: http://127.0.0.1:8787/v1
 
 未被覆盖的 provider 不受代理停止影响，所以这不会危及你的日常会话。
 
-## 为什么需要启动器
+## 启动器是可选的
 
-MCP 启动器通过 `uvx` 按需安装 Headroom。在沙箱化的 Harness（workspace-write）下，uv 与 Headroom 的默认状态目录位于工作区之外且不可写，因此启动器会在 exec `uvx` 之前把它们全部固定到工作区内：
-
-| 变量 | 值 | 原因 |
-| --- | --- | --- |
-| `UV_CACHE_DIR` | `<workspace>/.uv-cache` | uv 的包缓存 |
-| `UV_TOOL_DIR` | `<workspace>/.uv-tools` | uv 工具环境 |
-| `UV_TOOL_BIN_DIR` | `<workspace>/.uv-bin` | uv 工具 shim |
-| `TIKTOKEN_CACHE_DIR` | `<workspace>/.tiktoken-cache` | 防止 tiktoken 词表下载卡死 |
-| `HEADROOM_WORKSPACE_DIR` | `<workspace>/.headroom` | 沙箱下 Headroom 无法写 `~/.headroom` |
-| `HEADROOM_BEACON` | `off` | 关闭匿名使用信标（本地优先，无遥测） |
-| `HEADROOM_UPDATE_CHECK` | `off` | 关闭每日一次的 PyPI 版本探测 —— 由独立于信标的开关控制 |
-| `HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS` | `120` | 限制词表加载卡顿 |
-
-工作区根目录在每个启动器开头只解析一次：
-
-1. 若设置了 `HEADROOM_DSH_WORKSPACE` 环境变量则用之；否则
-2. 从脚本自身所在目录往上两级（`plugin/bin` → 工作区根目录）。
-
-因此 bundle 可以迁移位置，只要补丁的 `cwd` 表达式能解析成功，它在任何工作目录下都能工作（见[迁移 bundle 位置](#迁移-bundle-位置)）。
-
-最终执行的命令是：
+bundle 直接用 `PATH` 上的 `uvx` 拉起 `headroom mcp serve`，不需要任何包装脚本：
 
 ```
 uvx --from "headroom-ai[mcp]" headroom mcp serve
 ```
 
-### 可覆盖的变量
+因为 MCP stdio 服务由传输层（cross-spawn）直接 spawn、不经过沙箱子进程服务，它继承 Host 权限 —— uv 与 Headroom 直接写各自标准的用户级位置（`~/.cache/uv`、`~/.headroom` 等），**不**需要把缓存钉进工作区。补丁的 `env` 只设三个开关：`HEADROOM_BEACON=off`、`HEADROOM_UPDATE_CHECK=off`、`HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS=120`。
 
-上表中的每个值都是默认值，可在启动前通过设置变量替换。以下变量会被读取，但未列入上表，因为你很少需要它们：
+`bin/headroom-mcp.cmd`（Windows）与 `bin/headroom-mcp.sh`（POSIX）是**可选的独立便捷包装**，仅供**手动测试** —— bundle 不调用它们。手动运行它们时，它们会把 uv/Headroom 的缓存与状态目录固定到工作区内，并从 `HEADROOM_DSH_WORKSPACE`（或脚本自身往上两级）解析工作区根目录，让一次手动运行自成一体。
+
+### 启动器与代理可覆盖的变量
+
+这些变量由启动器与代理读取，而非 bundle 那条 `uvx` 调用：
 
 | 变量 | 默认值 | 作用 |
 | --- | --- | --- |
-| `HEADROOM_DSH_WORKSPACE` | 脚本往上两级 | 其余所有路径都派生自这个工作区根目录 |
-| `HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS` | `120` | 限制 MCP server 的词表加载卡顿 |
+| `HEADROOM_DSH_WORKSPACE` | 脚本往上两级 | 手动运行启动器时的工作区根目录 |
+| `HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS` | `120` | 限制词表加载卡顿 |
 | `HEADROOM_MODE` | `token` | 代理压缩模式（`token` 或 `cache`） |
 | `HEADROOM_PORT` | `8787` | 代理监听端口 |
 | `HEADROOM_UPSTREAM_URL` | *（无 —— **必需**）* | 代理上游；参数 1 优先级更高 |
@@ -117,26 +101,11 @@ plugin_manager  action=install_bundle  target=<仓库路径>\plugin
 
 这是受支持的路径，也是实际采用的方式。它会在 profile 中运行 pnpm，把 `@local/dsh-headroom` 链接进 `~/.dsh/profiles/<profile>/node_modules`，并把补丁应用到当前 profile（live profile 无需重启）。成功时返回 `application: applied` 且 `warnings` 为空。
 
-**安装前请先修改 [`cordis.patch.yml`](cordis.patch.yml) 中的 `command`** —— 参见[迁移 bundle 位置](#迁移-bundle-位置)。
-
 不要手工编辑 profile 的 `package.json` 或 `cordis.patch.yml`；bundle 拥有自己的补丁文件，而 profile 由包管理器掌管。
 
-### 迁移 bundle 位置
+### 无需配置路径
 
-MCP 的 `command` 会被 SDK 以 `shell: false` **原样** spawn（`@modelcontextprotocol/client/dist/stdio.mjs`），而 `dsh-mcp-client` 的 config schema 把它声明为普通的 `z.string().required()`，不做任何路径解析 —— 该模块根本没有引入 `path`。Loader 的相对路径锚定只覆盖行的 `name`（其 `anchorInsertedPluginNames` 只改写 `entry.name`），**不覆盖**插件自身的 config 值。因此相对 `command` **不会**相对于补丁文件解析。
-
-但它是相对于 `cwd` 解析的 —— 而 `dsh-mcp-client` 恰好接受 `cwd` 配置项（`lib/index.js:786`，默认 `""`），并把它转发给 SDK 的 stdio 传输层（`:44`）。这正是纯配置补丁也能做到可迁移的原因：
-
-```yaml
-cwd: !!js process.env.DSH_HEADROOM_ROOT || process.cwd()
-command: plugin\bin\headroom-mcp.cmd
-```
-
-从仓库根目录启动 Harness 时，回退值已经正确；从别处启动时，由 `DSH_HEADROOM_ROOT` 提供根目录。启动器本身同样不含硬编码 —— 每个都从 `HEADROOM_DSH_WORKSPACE` 解析自己的工作区根目录，否则回退到自身所在位置往上两级。
-
-`!!js` 是 Cordis 的 entry-list 方言，在 Host 中于行激活时以 `with (ctx) { return eval(expr) }` 求值。该作用域暴露 `process` 等 Node 全局对象，但**不暴露** `__dirname`、`__filename`、`require`、`module` —— 所以无法自动推导出仓库相对路径，它只能来自环境变量或工作目录。
-
-另请注意，DSH 在把环境交给 MCP 子进程之前，会清洗任何匹配 `/KEY|PASSWORD|SECRET|TOKEN/i` 的名字，以及所有 `DSH_*` 名字（`dsh-subprocess/lib/index.js:32,52`）。本 bundle 的 `HEADROOM_*` 命名原样通过；而 `DSH_HEADROOM_ROOT` 是由 Loader 在那次清洗**之前**读取的 —— 它在 Host 中求值，而非在子进程中。因此启动器自己读取的变量，请优先使用 `HEADROOM_DSH_WORKSPACE`。
+MCP 行的 `command` 不含目录分量，stdio 传输层通过 `PATH`（`cross-spawn`）解析它 —— 所以安装位置和 Host 的工作目录都不再重要，也没有 `cwd`、`DSH_HEADROOM_ROOT` 或相对启动器路径需要你操心。
 
 ## 验证
 
@@ -148,11 +117,11 @@ command: plugin\bin\headroom-mcp.cmd
 node -e "const{createRequire}=require('module');const r=createRequire(process.env.DSH_CHECKOUT+'/node_modules/');const y=r('yaml');const d=y.parse(require('fs').readFileSync('plugin/cordis.patch.yml','utf8'));console.log(JSON.stringify(d,null,2))"
 ```
 
-预期得到一个顶层数组，其中包含一个 `insert` 行，其 `config.serverName` 为 `headroom`，且 `config.command` 指向启动器。
+预期得到一个顶层数组，其中包含一个 `insert` 行，其 `config.serverName` 为 `headroom`，且 `config.command` 为 `uvx`。
 
 ### 2. MCP server 能完成握手
 
-把三行 JSON-RPC 写入文件，再管道输入。必须使用 PowerShell 管道 —— 用管道传给 Node 的 `child_process.spawn` 会撞上沙箱的 EPERM 边界。
+把三行 JSON-RPC 写入文件，再管道输入。必须使用 PowerShell 管道 —— 用管道传给 Node 的 `child_process.spawn` 会撞上沙箱的 EPERM 边界。下面用可选的 `headroom-mcp.cmd` 包装来跑握手（bundle 本身直接跑等价的 `uvx --from "headroom-ai[mcp]" headroom mcp serve`，换成那条命令也一样）：
 
 ```powershell
 $req = @(
@@ -186,7 +155,7 @@ $p.StandardInput.Close(); $p.WaitForExit(30000)
 
 ### 3. 在 Harness 中确认
 
-安装后，`plugin_manager` 的 `list_plugins` 应显示 `headroom-mcp` 行处于启用状态，且 agent 应能看到三个 `mcp__headroom__*` 工具。
+安装后，`plugin_manager` 的 `list_plugins` 应显示 `headroom-mcp` 行处于 `active` 状态，且 agent 应能看到三个 `mcp__headroom__*` 工具。
 
 ### 4. 端到端验证器
 
@@ -238,7 +207,7 @@ plugin_manager  action=remove_bundle  target=@local/dsh-headroom
 - **压缩取决于重复性的结构。** 一个 400 行的 JSON 数组节省了 41.2%（`router:smart_crusher:0.47`），而同样这些行以 JSON Lines 形式保存时只节省 5.8% —— SmartCrusher 利用的是数组结构。`headroom_compress` 会返回它实际应用的 `transforms`，所以意外的低节省是可见的而非静默的。
 - **代理必须处于运行状态。** 指向已停止代理的 provider 会直接失败，而不会回退到直连上游。
 - **首次运行较慢。** `uvx` 需要在首次启动时安装 `headroom-ai[mcp]` 及其依赖。请预期延迟和网络访问；之后走缓存。
-- **`uvx` 必须在 `PATH` 中。** 启动器按名字调用 `uvx`。
-- **Windows 启动器是 `.cmd`。** 它无法在没有 shell 的情况下被直接 spawn；`dsh-mcp-client` 以 `command` 形式调用它时，在 Windows 上会经由 `cmd.exe`。`.sh` 启动器是 POSIX 等价物。
-- **补丁通过 `cwd` 定位启动器。** 只要你从仓库根目录启动 Harness，它开箱即用；否则请把 `DSH_HEADROOM_ROOT` 设为该根目录，让 `!!js` 表达式能找到它。
+- **`uvx` 必须在 `PATH` 中。** MCP 行按名字调用 `uvx`。
+- **MCP 行跨平台。** `uvx` 在 Windows（`uvx.exe`）、macOS、Linux 上都是同一个名字，因此 MCP 行没有 `.cmd`/`.sh` 的平台区分。可选的 `.cmd`/`.sh` 包装仅供手动测试。
+- **安装后即可用。** MCP 行经 `PATH` 上的 `uvx` 启动，无论 bundle 装在哪、Host 的工作目录是什么都能工作 —— 安装后 `headroom-mcp` 行应为 `active`，三个工具即可调用。
 - **无遥测，且更新检查已关闭**（`HEADROOM_BEACON=off` 加上 `HEADROOM_UPDATE_CHECK=off`，两条独立开关的通路），但压缩库本身是本地运行的第三方代码，会接触到你的内容。

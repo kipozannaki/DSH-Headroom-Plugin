@@ -42,7 +42,7 @@
 
 **前置条件：** 一个可用的 DSH profile，以及 `PATH` 中的 `uv`/`uvx`。
 
-把这个仓库克隆到任意位置 —— 启动器会在运行时自行推算出路径，所以只有第 1 步关心它放在哪里。
+把这个仓库克隆到任意位置 —— MCP 行通过 `PATH` 上的 `uvx` 启动，不关心 bundle 装在哪里；只有 `install_bundle` 那一步需要一个绝对路径来定位 bundle。
 
 ```bash
 git clone <this-repo> dsh-headroom
@@ -51,30 +51,26 @@ cd dsh-headroom
 
 不需要任何构建。Headroom 本身会在首次使用时由 `uvx` 拉取，代理环境由其启动器按需创建。
 
-### 第 1 步 —— 安装 bundle
+### 第 1 步 —— 无需任何配置
 
-随附的补丁**本身已经是可迁移的** —— 它指定相对启动器路径，并自带 `cwd`，因此无需任何编辑：
-
-```yaml
-cwd: !!js process.env.DSH_HEADROOM_ROOT || process.cwd()
-command: plugin\bin\headroom-mcp.cmd
-args: []
-```
-
-MCP 的 `command` 是一个普通配置字符串，传输层会以 `shell: false` **原样** spawn 它、且从不改写它，所以相对路径是相对于 `cwd` 解析的 —— 而不是相对于补丁文件。因此这个补丁把 `cwd` 设为仓库根目录：若你设置了 `$DSH_HEADROOM_ROOT` 就用它，否则用 Host 的工作目录。**从克隆出的仓库根目录启动 Harness，就无需配置任何东西即可工作。** 若从别处启动，请设置 `DSH_HEADROOM_ROOT`：
-
-```powershell
-setx DSH_HEADROOM_ROOT "D:\path\to\dsh-headroom"     # Windows
-export DSH_HEADROOM_ROOT=/path/to/dsh-headroom       # POSIX
-```
-
-`!!js` 是 Cordis 的 entry-list 方言，在 Host 中于行激活时求值。这里只用到 `process.env` 与 `process.cwd()`，因为该求值作用域**不提供** `__dirname` 和 `require`。
-
-在 macOS 或 Linux 上，请把 `command` 指向 POSIX 启动器 —— 同一个 `cwd` 表达式依然适用：
+随附的补丁是零配置的 —— 它通过 `PATH` 上的 `uvx` 直接拉起上游 `headroom mcp serve`，因此不需要编辑任何东西：
 
 ```yaml
-command: plugin/bin/headroom-mcp.sh
+command: uvx
+args:
+  - '--from'
+  - 'headroom-ai[mcp]'
+  - 'headroom'
+  - 'mcp'
+  - 'serve'
+env:
+  HEADROOM_BEACON: 'off'
+  HEADROOM_UPDATE_CHECK: 'off'
+  HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS: '120'
+failOnStartupError: true
 ```
+
+`command` 不含目录分量，stdio 传输层通过 `PATH` 解析它（`cross-spawn`），所以安装位置和 Host 的工作目录都不再重要 —— 这正是纯配置补丁也能做到可迁移的原因。`uvx` 在 Windows（`uvx.exe`）、macOS、Linux 上都是同一个名字，因此 MCP 行没有任何 `.cmd`/`.sh` 的平台区分。`args` 作为子进程 argv 原样传入，`headroom-ai[mcp]` 无需引号。
 
 ### 第 2 步 —— 安装 bundle
 
@@ -82,7 +78,7 @@ command: plugin/bin/headroom-mcp.sh
 plugin_manager  action=install_bundle  target=<本仓库绝对路径>\plugin
 ```
 
-它会在你的 profile 中运行 `pnpm`，把 `@local/dsh-headroom` 链接进 `~/.dsh/profiles/<profile>/node_modules`，并把补丁应用到当前 profile。成功时返回 `application: applied` 且 `warnings` 为空。如果你的 profile 不是 live profile，请重启 DSH。
+它会在你的 profile 中运行 `pnpm`，把 `@local/dsh-headroom` 链接进 `~/.dsh/profiles/<profile>/node_modules`，并把补丁应用到当前 profile。成功时返回 `application: applied` 且 `warnings` 为空。如果你的 profile 不是 live profile，请重启 DSH。装好后 `headroom-mcp` 行即为 `active`，三个 `mcp__headroom__*` 工具马上可用 —— 不需要从任何特定目录启动 Harness。
 
 > 只有这一个路径无法避免绝对写法 —— `install_bundle` 需要由你告知 bundle **在哪里**。它之后的一切都是相对的。
 
@@ -189,9 +185,9 @@ h11._util.LocalProtocolError: Illegal header value b'deepseek-v4.1-flash '
 
 | 路径 | 作用 |
 | --- | --- |
-| [`plugin/`](plugin/) | **可安装的 DSH bundle** —— manifest、Cordis 补丁、启动器 |
-| [`plugin/cordis.patch.yml`](plugin/cordis.patch.yml) | 插入 `headroom-mcp` 行（一个 `@deepseek-ai/dsh-mcp-client` 的 stdio 条目） |
-| [`plugin/bin/headroom-mcp.cmd`](plugin/bin/headroom-mcp.cmd) | MCP 启动器（Windows）；[`headroom-mcp.sh`](plugin/bin/headroom-mcp.sh) 为 POSIX 等价物 |
+| [`plugin/`](plugin/) | **可安装的 DSH bundle** —— manifest、Cordis 补丁、可选启动器 |
+| [`plugin/cordis.patch.yml`](plugin/cordis.patch.yml) | 插入 `headroom-mcp` 行（一个 `@deepseek-ai/dsh-mcp-client` 的 stdio 条目，经 `uvx` 拉起上游 `headroom mcp serve`） |
+| [`plugin/bin/headroom-mcp.cmd`](plugin/bin/headroom-mcp.cmd) | 可选的 MCP 便捷包装（Windows），仅供**手动测试** —— bundle 直接用 `uvx`，不调用它；[`headroom-mcp.sh`](plugin/bin/headroom-mcp.sh) 为 POSIX 等价物 |
 | [`plugin/bin/headroom-proxy.cmd`](plugin/bin/headroom-proxy.cmd) | 代理启动器 —— token 模式，不自动启动 |
 | [`plugin/bin/setup-proxy-venv.cmd`](plugin/bin/setup-proxy-venv.cmd) | 创建 `.proxy-venv` 并应用响应头补丁；幂等 |
 | [`plugin/patch_headroom_model_header.py`](plugin/patch_headroom_model_header.py) | 响应头安全补丁；`--check` 只验证不写入 |
@@ -240,15 +236,21 @@ registrar integration OK
 
 ## 环境说明
 
-所有可写目录都被固定在工作区内部，因为沙箱化的 Harness 无法写入 `~/.headroom`、`~/.cache/uv` 或 uv 的工具目录。以下每一条都是开发过程中实际踩到过的失败：
+MCP 行由传输层（cross-spawn）直接 spawn，不经过沙箱子进程服务，因此继承 Host 权限 —— uv 与 Headroom 直接写各自标准的用户级位置（`~/.cache/uv`、`~/.headroom` 等），**不**需要把缓存钉进工作区。补丁的 `env` 只设三个 `HEADROOM_*` 开关：
+
+| 变量 | 值 | 作用 |
+| --- | --- | --- |
+| `HEADROOM_BEACON` | `off` | 匿名使用信标 |
+| `HEADROOM_UPDATE_CHECK` | `off` | 每日一次的 PyPI 版本探测（另一条独立对外通路） |
+| `HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS` | `120` | 限制词表加载卡顿 |
+
+可选启动器（`headroom-mcp.cmd`/`.sh`）与代理启动器（`headroom-proxy.cmd`、`setup-proxy-venv.cmd`）在你手动运行它们时，会把下面这些目录固定到工作区内 —— 每一条都对应开发过程中实际踩到过的失败：
 
 | 变量 | 值 | 避免的问题 |
 | --- | --- | --- |
 | `UV_CACHE_DIR` / `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` | `<workspace>/.uv-*` | uv 缓存与 shim 的权限错误 |
 | `TIKTOKEN_CACHE_DIR` | `<workspace>/.tiktoken-cache` | tokenizer 词表下载卡死 |
 | `HEADROOM_WORKSPACE_DIR` | `<workspace>/.headroom` | 写 `~/.headroom`（CCR 存储）报 `[WinError 5]` |
-| `HEADROOM_BEACON` | `off` | 匿名使用信标 |
-| `HEADROOM_UPDATE_CHECK` | `off` | 每日一次的 PyPI 版本探测（另一条独立对外通路） |
 | `HEADROOM_DSH_WORKSPACE` | *（可选）* | 覆盖工作区根目录探测 |
 
 `.uv-cache`、`.uv-tools`、`.uv-bin`、`.tiktoken-cache`、`.headroom`、`.proxy-venv` 存放下载的包和运行时状态。可以安全删除以回收磁盘空间；下次启动会重新安装。

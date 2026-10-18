@@ -53,8 +53,9 @@ lossy, and the original is recovered by asking for it.
 
 **Prerequisites:** a working DSH profile, and `uv`/`uvx` on `PATH`.
 
-Clone this repository anywhere you like — the launchers work out their own paths
-at runtime, so the only thing that cares where it lives is Step 1.
+Clone this repository anywhere you like — the MCP row starts `uvx` from `PATH`, so
+it does not care where the bundle is installed; only the `install_bundle` step
+needs an absolute path to locate the bundle.
 
 ```bash
 git clone <this-repo> dsh-headroom
@@ -64,39 +65,32 @@ cd dsh-headroom
 Nothing needs building. Headroom itself is fetched by `uvx` on first use, and the
 proxy environment is created on demand by its launcher.
 
-### Step 1 — install the bundle
+### Step 1 — nothing to configure
 
-The shipped patch is **already portable** — it names a relative launcher and
-supplies its own `cwd`, so there is nothing to edit:
-
-```yaml
-cwd: !!js process.env.DSH_HEADROOM_ROOT || process.cwd()
-command: plugin\bin\headroom-mcp.cmd
-args: []
-```
-
-An MCP `command` is a plain config string that the transport spawns **verbatim**
-with `shell: false` and never rewrites, so a relative path resolves against `cwd`
-— not against the patch file. This patch therefore sets `cwd` to the repository
-root: `$DSH_HEADROOM_ROOT` if you set it, otherwise the Host's working directory.
-**Start the Harness from the cloned repository root and it works with no
-configured anything.** If you start it elsewhere, set `DSH_HEADROOM_ROOT`:
-
-```powershell
-setx DSH_HEADROOM_ROOT "D:\path\to\dsh-headroom"     # Windows
-export DSH_HEADROOM_ROOT=/path/to/dsh-headroom       # POSIX
-```
-
-`!!js` is the Cordis entry-list dialect, evaluated in the Host at activation.
-Only `process.env` and `process.cwd()` are used here, because the evaluation
-scope exposes neither `__dirname` nor `require`.
-
-On macOS or Linux, point `command` at the POSIX launcher instead — the same
-`cwd` expression still applies:
+The shipped patch is zero-config — it pulls up the upstream `headroom mcp serve`
+directly via `uvx` on `PATH`, so there is nothing to edit:
 
 ```yaml
-command: plugin/bin/headroom-mcp.sh
+command: uvx
+args:
+  - '--from'
+  - 'headroom-ai[mcp]'
+  - 'headroom'
+  - 'mcp'
+  - 'serve'
+env:
+  HEADROOM_BEACON: 'off'
+  HEADROOM_UPDATE_CHECK: 'off'
+  HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS: '120'
+failOnStartupError: true
 ```
+
+`command` has no directory component, and the stdio transport resolves it through
+the `PATH` (`cross-spawn`), so neither the install location nor the Host's working
+directory matters any more — which is exactly what makes a config-only patch
+portable. `uvx` is the same name on Windows (`uvx.exe`), macOS, and Linux, so the
+MCP row has no `.cmd`/`.sh` platform split. `args` reaches the child as the argv
+verbatim, so `headroom-ai[mcp]` needs no quoting.
 
 ### Step 2 — install the bundle
 
@@ -107,7 +101,9 @@ plugin_manager  action=install_bundle  target=<absolute-path-to-this-repo>\plugi
 That runs `pnpm` in your profile, links `@local/dsh-headroom` into
 `~/.dsh/profiles/<profile>/node_modules`, and applies the patch to the live
 profile. Success reports `application: applied` with empty `warnings`. Restart
-DSH if your profile is not the live one.
+DSH if your profile is not the live one. Once installed, the `headroom-mcp` row is
+`active` and the three `mcp__headroom__*` tools are immediately usable — no need
+to launch the Harness from any particular directory.
 
 > This one path is unavoidably absolute — `install_bundle` is told *where the
 > bundle is* by you. Everything after it is relative.
@@ -250,9 +246,9 @@ cannot silently lose the fix.
 
 | Path | Role |
 | --- | --- |
-| [`plugin/`](plugin/) | **The installable DSH bundle** — manifest, Cordis patch, launchers |
-| [`plugin/cordis.patch.yml`](plugin/cordis.patch.yml) | Inserts the `headroom-mcp` row (an `@deepseek-ai/dsh-mcp-client` stdio entry) |
-| [`plugin/bin/headroom-mcp.cmd`](plugin/bin/headroom-mcp.cmd) | MCP launcher (Windows); [`headroom-mcp.sh`](plugin/bin/headroom-mcp.sh) is the POSIX equivalent |
+| [`plugin/`](plugin/) | **The installable DSH bundle** — manifest, Cordis patch, optional launchers |
+| [`plugin/cordis.patch.yml`](plugin/cordis.patch.yml) | Inserts the `headroom-mcp` row (an `@deepseek-ai/dsh-mcp-client` stdio entry that starts the upstream `headroom mcp serve` via `uvx`) |
+| [`plugin/bin/headroom-mcp.cmd`](plugin/bin/headroom-mcp.cmd) | Optional MCP convenience wrapper (Windows), for **manual testing** only — the bundle uses `uvx` directly and does not invoke it; [`headroom-mcp.sh`](plugin/bin/headroom-mcp.sh) is the POSIX equivalent |
 | [`plugin/bin/headroom-proxy.cmd`](plugin/bin/headroom-proxy.cmd) | Proxy launcher — token mode, no auto-start |
 | [`plugin/bin/setup-proxy-venv.cmd`](plugin/bin/setup-proxy-venv.cmd) | Creates `.proxy-venv` and applies the header patch; idempotent |
 | [`plugin/patch_headroom_model_header.py`](plugin/patch_headroom_model_header.py) | The header-safety source patch; `--check` verifies without writing |
