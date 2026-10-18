@@ -1,33 +1,40 @@
 # DSH bundle patch: register Headroom's MCP server.
 #
-# Installed as a local bundle, this appends one row that spawns
-# plugin/bin/headroom-mcp.cmd (Windows) over stdio and exposes Headroom's
-# on-demand compression tools to the Harness agent as
+# Installed as a local bundle, this appends one row that runs the upstream
+# `headroom mcp serve` over stdio and exposes Headroom's on-demand compression
+# tools to the Harness agent as
 #   mcp__headroom__headroom_compress
 #   mcp__headroom__headroom_retrieve
 #   mcp__headroom__headroom_stats
 #
-# WHY `cwd` IS SET AND `command` IS RELATIVE
-# ------------------------------------------
-# The stdio transport spawns `command` verbatim (shell: false) and never
-# rewrites it, so an absolute path here would be wrong for everyone except the
-# machine it was written on. A relative `command` resolves against `cwd`
-# instead, which this patch supplies as an expression:
+# WHY `command` IS A PLAIN `uvx` ON PATH (NOT A RELATIVE SCRIPT PATH)
+# ------------------------------------------------------------------
+# The stdio transport resolves `command` through the PATH when it has no
+# directory component (cross-spawn -> `resolveCommand`), and spawns it with
+# `shell: false`. `uvx` is a real executable on PATH, so this row works no
+# matter where the bundle is installed or what the Host's working directory is.
 #
-#   cwd = DSH_HEADROOM_ROOT  if you set it, else the Host's working directory
+# An earlier revision used `command: plugin\bin\headroom-mcp.cmd` (a relative
+# path) with `cwd: !!js process.env.DSH_HEADROOM_ROOT || process.cwd()`. That
+# only resolved when the Harness was launched from the cloned repository root;
+# once installed as a bundle (market / `dsh plugin add`), the launcher lives
+# under the package root with no `plugin\` prefix, the relative command no
+# longer resolved, the spawn failed with ENOENT, and -- because
+# `failOnStartupError: true` -- the row activated as `failed` and registered no
+# tools. Naming `uvx` directly removes that entire class of path bugs and is
+# portable across Windows (`uvx.exe`), macOS and Linux alike.
 #
-# So the common case needs no editing at all: start the Harness from the cloned
-# repository root and `process.cwd()` is already correct. If you start it
-# elsewhere, set DSH_HEADROOM_ROOT to the repository root and it still works.
+# `args` is passed verbatim as the child argv, so `headroom-ai[mcp]` needs no
+# quoting. `env` merges over the harness's scrubbed parent environment (which
+# keeps PATH, HOME, locale and proxy names -- see dsh-subprocess). The three
+# HEADROOM_* flags keep Headroom local-first: no telemetry beacon, no daily
+# PyPI update probe, and a patient tiktoken cache load.
 #
-# `!!js` is the Cordis entry-list dialect; the Loader evaluates it at activation.
-# Only `process.env` and `process.cwd()` are relied on here -- `__dirname` and
-# `require` are NOT available in that evaluation scope.
-#
-# The launcher pins every uv / Headroom cache and state directory inside the
-# workspace (see plugin/bin/headroom-mcp.cmd), so a workspace-write sandbox can
-# run it. HEADROOM_DSH_WORKSPACE overrides the workspace root the launcher uses
-# for its own caches; it is independent of the path resolution above.
+# Caches are NOT pinned into the workspace. The MCP stdio server is spawned
+# directly by the transport (cross-spawn), not through the sandboxed subprocess
+# service, so it inherits the Host's permissions and uv/Headroom write to their
+# standard per-user locations. That also avoids scattering cache directories
+# into whatever directory the row happens to resolve against.
 
 - insert:
     - id: headroom-mcp
@@ -35,7 +42,15 @@
       config:
         serverName: headroom
         transport: stdio
-        cwd: !!js process.env.DSH_HEADROOM_ROOT || process.cwd()
-        command: plugin\bin\headroom-mcp.cmd
-        args: []
+        command: uvx
+        args:
+          - '--from'
+          - 'headroom-ai[mcp]'
+          - 'headroom'
+          - 'mcp'
+          - 'serve'
+        env:
+          HEADROOM_BEACON: 'off'
+          HEADROOM_UPDATE_CHECK: 'off'
+          HEADROOM_TIKTOKEN_LOAD_TIMEOUT_SECONDS: '120'
         failOnStartupError: true
