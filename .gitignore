@@ -1,9 +1,11 @@
 # ---------------------------------------------------------------------------
 # Runtime state and downloaded dependencies.
 #
-# The launchers pin every cache inside the workspace (see plugin/bin/*.cmd),
-# so these appear next to the source after a single run and add up to ~2 GB.
-# They are all regenerated on demand — never commit them.
+# The optional launchers and the proxy pin every cache inside the workspace
+# (see plugin/bin/*.cmd), so these appear next to the source after a single
+# run and add up to ~2 GB. They are all regenerated on demand — never commit
+# them. (The bundle's own MCP row runs `uvx` with default per-user caches and
+# writes none of these.)
 # ---------------------------------------------------------------------------
 .uv-cache/
 .uv-tools/
@@ -11,6 +13,7 @@
 .tiktoken-cache/
 .headroom/
 .proxy-venv/
+.hf-cache/
 
 # Local profile backup written while wiring the proxy into a DSH profile.
 .profile-backup/
@@ -22,6 +25,17 @@
 .req.jsonl
 .out.txt
 .proxy-body.json
+
+# ---------------------------------------------------------------------------
+# Local audit / test leftovers — machine-specific, may embed local absolute
+# paths. Never commit.
+# ---------------------------------------------------------------------------
+.recon/
+.audit-*
+.proxy-audit*
+.kompress-*
+*.log
+*.incomplete
 
 # ---------------------------------------------------------------------------
 # Node / Python

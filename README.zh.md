@@ -42,6 +42,21 @@
 
 **前置条件：** 一个可用的 DSH profile，以及 `PATH` 中的 `uv`/`uvx`。
 
+如果 `uvx --version` 还打不出版本号，先装 `uv` —— 这是唯一的前置条件，且 Windows、macOS、Linux 用同一条思路：
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 或者，如果你已有 Python 和 pip
+pip install uv
+```
+
+装完重开终端，确认 `uvx --version` 有输出。除此之外不需要任何东西：`uvx` 会自己拉取 Headroom 及其全部 Python 依赖，**不需要**你创建 Python 环境，也**不需要**编译任何包。
+
 把这个仓库克隆到任意位置 —— MCP 行通过 `PATH` 上的 `uvx` 启动，不关心 bundle 装在哪里；只有 `install_bundle` 那一步需要一个绝对路径来定位 bundle。
 
 ```bash

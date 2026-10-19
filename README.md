@@ -53,6 +53,24 @@ lossy, and the original is recovered by asking for it.
 
 **Prerequisites:** a working DSH profile, and `uv`/`uvx` on `PATH`.
 
+If `uvx --version` does not print a version yet, install `uv` first — it is the one
+prerequisite, and the same command works on Windows, macOS and Linux:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# or, if you already have Python and pip
+pip install uv
+```
+
+Reopen the terminal afterwards and check `uvx --version`. Nothing else is
+required: `uvx` fetches Headroom and all of its Python dependencies by itself,
+so there is no Python environment to create and no package to build.
+
 Clone this repository anywhere you like — the MCP row starts `uvx` from `PATH`, so
 it does not care where the bundle is installed; only the `install_bundle` step
 needs an absolute path to locate the bundle.
