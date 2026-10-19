@@ -207,6 +207,7 @@ plugin_manager  action=remove_bundle  target=@local/dsh-headroom
 - **压缩取决于重复性的结构。** 一个 400 行的 JSON 数组节省了 41.2%（`router:smart_crusher:0.47`），而同样这些行以 JSON Lines 形式保存时只节省 5.8% —— SmartCrusher 利用的是数组结构。`headroom_compress` 会返回它实际应用的 `transforms`，所以意外的低节省是可见的而非静默的。
 - **代理必须处于运行状态。** 指向已停止代理的 provider 会直接失败，而不会回退到直连上游。
 - **首次运行较慢。** `uvx` 需要在首次启动时安装 `headroom-ai[mcp]` 及其依赖。请预期延迟和网络访问；之后走缓存。
+- **散文压缩需要 ML 模型，且预热较慢。** 纯文本压缩走 Headroom 的 Kompress 后端：首次使用时下载一个 ONNX 模型（约 260 MB），之后冷启动预热约需两到三分钟。预热完成前散文会原样通过，而结构化内容（JSON、日志、代码）正常压缩 —— 可在代理的 `/debug/warmup` 看 `kompress: loaded`。两条路径在这里有差别：代理环境带 ONNX 后端，而 MCP 行只装 `headroom-ai[mcp]`，因此 `headroom_compress` 压缩结构化内容、散文则原样返回。
 - **`uvx` 必须在 `PATH` 中。** MCP 行按名字调用 `uvx`。
 - **MCP 行跨平台。** `uvx` 在 Windows（`uvx.exe`）、macOS、Linux 上都是同一个名字，因此 MCP 行没有 `.cmd`/`.sh` 的平台区分。可选的 `.cmd`/`.sh` 包装仅供手动测试。
 - **安装后即可用。** MCP 行经 `PATH` 上的 `uvx` 启动，无论 bundle 装在哪、Host 的工作目录是什么都能工作 —— 安装后 `headroom-mcp` 行应为 `active`，三个工具即可调用。

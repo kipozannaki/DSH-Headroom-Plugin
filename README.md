@@ -352,6 +352,15 @@ We would rather you know these up front than discover them in production.
   not break your normal sessions.
 - **First MCP launch is slow.** `uvx` installs `headroom-ai[mcp]` and its
   dependencies, and needs network access. Later launches use the cache.
+- **Prose needs the ML model, and it warms up slowly.** Plain-text compression runs
+  through Headroom's Kompress backend, which downloads an ONNX model (roughly 260 MB)
+  on first use and then takes about two to three minutes to warm up on a cold start.
+  Until it reports ready, prose passes through uncompressed — structured content
+  (JSON, logs, code) is compressed the whole time. Check `/debug/warmup` on the
+  proxy for `kompress: loaded`. Note also that the two paths differ here: the proxy
+  environment ships the ONNX backend, while the MCP row installs `headroom-ai[mcp]`
+  only, so `headroom_compress` compresses structured content and returns prose
+  unchanged.
 - **This is not a re-implementation.** Compression runs in Headroom's own process,
   using its published code. The only changes made for this integration are the
   header patch and the registrar addition, both in `plugin/`.

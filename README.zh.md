@@ -246,6 +246,7 @@ registrar integration OK
 - **压缩取决于结构，而非体积。** 一个 400 行的 JSON 数组节省了 41.2%（`router:smart_crusher:0.47`），而同样这些行以 JSON Lines 形式保存时只节省 5.8% —— SmartCrusher 利用的正是数组结构。`headroom_compress` 会返回它实际应用的 `transforms`，所以意外的低节省是可见的而非静默的。
 - **代理必须处于运行状态**，否则被重定向的 provider 会直接失败而不是回退。未被覆盖的 provider 不受影响，所以代理停掉不会破坏你的日常会话。
 - **MCP 首次启动较慢。** `uvx` 需要安装 `headroom-ai[mcp]` 及其依赖，并且需要网络。之后的启动走缓存。
+- **散文压缩需要 ML 模型，且预热较慢。** 纯文本压缩走 Headroom 的 Kompress 后端：首次使用时会下载一个 ONNX 模型（约 260 MB），之后冷启动预热约需两到三分钟。在它报告就绪之前，散文请求会原样通过 —— 而结构化内容（JSON、日志、代码）全程正常压缩。可在代理的 `/debug/warmup` 看 `kompress: loaded`。另外两条路径在这里不一样：代理环境带 ONNX 后端，而 MCP 行只装 `headroom-ai[mcp]`，因此 `headroom_compress` 压缩结构化内容、散文则原样返回。
 - **这不是重新实现。** 压缩运行在 Headroom 自己的进程里，使用它已发布的代码。本集成的改动只有响应头补丁和新增的注册器，两者都在 `plugin/` 下。
 - **无遥测，且更新检查已关闭。** 启动器同时禁用了两条对外通路：`HEADROOM_BEACON=off` 关闭那个匿名、不含内容的会话摘要（它在上游是**默认开启**的），`HEADROOM_UPDATE_CHECK=off` 关闭每日一次的 PyPI 版本探测 —— 后者由独立开关控制，否则仍会发出请求。仅本地的 `HEADROOM_TELEMETRY` 开关默认关闭，永不离开本机。尽管如此，Headroom 仍是本地运行的第三方代码，会接触到你的内容 —— 在处理敏感数据前请先阅读它。
 

@@ -303,6 +303,14 @@ probe, point `HEADROOM_PROXY_URL` at a running proxy via the launcher's `env`.
   outright rather than falling back to the direct upstream.
 - **First run is slow.** `uvx` installs `headroom-ai[mcp]` and its dependencies on
   first launch. Expect a delay and network access; subsequent runs are cached.
+- **Prose needs the ML model, and it warms up slowly.** Plain-text compression runs
+  through Headroom's Kompress backend: it downloads an ONNX model (~260 MB) on first
+  use, then takes about two to three minutes to warm up on a cold start. Until it
+  reports ready, prose passes through uncompressed while structured content (JSON,
+  logs, code) is compressed normally — check `/debug/warmup` on the proxy for
+  `kompress: loaded`. The two paths differ here: the proxy environment ships the
+  ONNX backend, whereas the MCP row installs `headroom-ai[mcp]` only, so
+  `headroom_compress` compresses structured content and returns prose unchanged.
 - **`uvx` must be on `PATH`.** The MCP row calls `uvx` by name.
 - **The MCP row is cross-platform.** `uvx` is the same name on Windows (`uvx.exe`),
   macOS, and Linux, so the MCP row has no `.cmd`/`.sh` platform split. The optional
