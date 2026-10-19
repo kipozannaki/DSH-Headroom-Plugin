@@ -1,6 +1,6 @@
 # DeepSeek-Harness-Headroom-Plugin
 
-![bundle](https://img.shields.io/badge/bundle-v1.0.0-CB3837?logo=npm&logoColor=white)
+![bundle](https://img.shields.io/badge/bundle-v1.0.1-CB3837?logo=npm&logoColor=white)
 ![license](https://img.shields.io/badge/license-Apache--2.0-brightgreen)
 ![python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-plugin-4D6BFE?logo=deepseek&logoColor=white)

@@ -9,7 +9,7 @@ and retrieve the original on demand, without leaving the conversation.
 
 **[中文文档](README.zh.md)** · [Top-level docs](../README.md)
 
-- Package: `@local/dsh-headroom` v1.0.0
+- Package: `@local/dsh-headroom` v1.0.1
 - Bundle patch: [`cordis.patch.yml`](cordis.patch.yml)
 - Optional MCP convenience wrapper (manual testing only): [`bin/headroom-mcp.cmd`](bin/headroom-mcp.cmd) (Windows) / [`bin/headroom-mcp.sh`](bin/headroom-mcp.sh) (POSIX)
 - Proxy launcher: [`bin/headroom-proxy.cmd`](bin/headroom-proxy.cmd) + [`bin/setup-proxy-venv.cmd`](bin/setup-proxy-venv.cmd)

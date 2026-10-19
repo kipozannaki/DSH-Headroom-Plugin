@@ -6,7 +6,7 @@
 
 **[English](README.md)** · [顶层文档](../README.zh.md)
 
-- 包名：`@local/dsh-headroom` v1.0.0
+- 包名：`@local/dsh-headroom` v1.0.1
 - Bundle 补丁：[`cordis.patch.yml`](cordis.patch.yml)
 - 可选的 MCP 便捷包装（仅供手动测试）：[`bin/headroom-mcp.cmd`](bin/headroom-mcp.cmd)（Windows）/ [`bin/headroom-mcp.sh`](bin/headroom-mcp.sh)（POSIX）
 - 代理启动器：[`bin/headroom-proxy.cmd`](bin/headroom-proxy.cmd) + [`bin/setup-proxy-venv.cmd`](bin/setup-proxy-venv.cmd)
